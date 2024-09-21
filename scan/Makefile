@@ -11,9 +11,9 @@ all: $(EXECUTABLE)
 OBJDIR=objs
 CXX=g++ -m64
 CXXFLAGS=-O3 -Wall
-LDFLAGS=-L/usr/local/cuda-11.7/lib64/ -lcudart
+LDFLAGS=-L/usr/local/cuda-11.7/lib64/ -lcudart -lcudadevrt
 NVCC=nvcc
-NVCCFLAGS=-O3 -m64 --gpu-architecture compute_61 -ccbin /usr/bin/gcc
+NVCCFLAGS=-O3 -m64 -rdc=true --gpu-architecture compute_61 -ccbin /usr/bin/gcc  -D__CDPRT_SUPPRESS_SYNC_DEPRECATION_WARNING
 
 
 OBJS=$(OBJDIR)/main.o  $(OBJDIR)/scan.o

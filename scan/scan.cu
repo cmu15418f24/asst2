@@ -29,16 +29,27 @@ static inline int nextPow2(int n)
     return n;
 }
 
-__global__ void exclusive_scan_iterative(int *data, int *end) {
+__device__ void first_loop(int *data, int N, int twod, int twod1, int numThreads) {
+    int start = twod1 * (blockIdx.x * blockDim.x + threadIdx.x);
+    for(int i = start; i < N; i += twod1  * numThreads) {
+        data[i + twod1 - 1] += data[i + twod - 1];
+    }
+}
+
+__global__ void exclusive_scan_iterative(int *data, int *end, int blockCnt, int threadsPerBlock) {
+    int numThreads = blockDim.x * gridDim.x;
+    numThreads = blockCnt * threadsPerBlock;
+
     int N = end - data;
     // upsweep phase.
     for (int twod = 1; twod < N; twod *= 2) {
         int twod1 = twod * 2;
 
-        // TODO parallelize for-loop below
-        for(int i = 0; i < N; i += twod1) {
-            data[i + twod1 - 1] += data[i + twod - 1];
-        }
+        first_loop<<<blockCnt, threadsPerBlock>>>(data, N, twod, twod1, numThreads);
+        cudaDeviceSynchronize();
+//        for(int i = 0; i < N; i += twod1) {
+//            data[i + twod1 - 1] += data[i + twod - 1];
+//        }
     }
     data[N - 1] = 0;
 
@@ -70,10 +81,14 @@ void exclusive_scan(int *device_data, int length) {
      * both the data array is sized to accommodate the next
      * power of 2 larger than the input.
      */
-    printf("start exclusive_scan");
-    exclusive_scan_iterative<<<1, 1>>>(device_data, device_data+length);
+    printf("\nstart exclusive_scan\n");
+    int threadsPerBlock = 32;
+    int blockCnt = (length + threadsPerBlock - 1) / threadsPerBlock; // TODO might not be necessary to round
+//    int numThreads = threadsPerBlock * blockCnt; // TODO should this be automated?
+    exclusive_scan_iterative<<<blockCnt, threadsPerBlock>>>(device_data, device_data+length,
+                                                            blockCnt, threadsPerBlock);
     cudaDeviceSynchronize();
-    printf("end exclusive_scan");
+    printf("end exclusive_scan\n");
 }
 
 /* This function is a wrapper around the code you will write - it copies the

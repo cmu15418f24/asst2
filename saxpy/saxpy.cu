@@ -19,10 +19,16 @@ saxpy_kernel(int N, float alpha, float* x, float* y, float* result) {
        result[index] = alpha * x[index] + y[index];
 }
 
+// TODO
+//Question: Compare and explain the difference between the results provided by two sets of timers (the timer
+//        you added and the timer that was already in the provided starter code). Are the bandwidth values observed
+//        roughly consistent with the reported bandwidths available to the different components of the machine?
+//Hint: You should use the web to track down the memory bandwidth of an NVIDIA RTX 2080 GPU, and
+//the maximum transfer speed of the computer’s PCIe-x16 bus. It’s PCIe 3.0, and a 16 lane bus connecting
+//        the CPU with the GPU.
+
 void
 saxpyCuda(int N, float alpha, float* xarray, float* yarray, float* resultarray) {
-
-    printf("ENTERING saxpy/saxpy.cu MAIN");
 
     int totalBytes = sizeof(float) * 3 * N;
 
@@ -37,7 +43,10 @@ saxpyCuda(int N, float alpha, float* xarray, float* yarray, float* resultarray) 
     //
     // TODO allocate device memory buffers on the GPU using cudaMalloc
     //
-
+    int byte_count = N * sizeof(float);
+    cudaMalloc((void **)&device_x, byte_count);
+    cudaMalloc((void **)&device_y, byte_count);
+    cudaMalloc((void **)&device_result, byte_count);
 
     // start timing after allocation of device memory
     double startTime = CycleTimer::currentSeconds();
@@ -45,29 +54,39 @@ saxpyCuda(int N, float alpha, float* xarray, float* yarray, float* resultarray) 
     //
     // TODO copy input arrays to the GPU using cudaMemcpy
     //
-
+    cudaMemcpy(device_x, xarray, byte_count, cudaMemcpyHostToDevice);
+    cudaMemcpy(device_y, yarray, byte_count, cudaMemcpyHostToDevice);
 
     // run kernel
+    double start_time_saxpy_kernel = CycleTimer::currentSeconds();
     saxpy_kernel<<<blocks, threadsPerBlock>>>(N, alpha, device_x, device_y, device_result);
     cudaDeviceSynchronize();
-
+    double end_time_saxpy_kernel = CycleTimer::currentSeconds();
+    double kernelDuration = end_time_saxpy_kernel - start_time_saxpy_kernel;
+    printf("\nKernel Only: %.3f ms\t\t[%.3f GB/s]\n", 1000.f * kernelDuration, toBW(totalBytes,
+                                                                               kernelDuration));
     //
     // TODO copy result from GPU using cudaMemcpy
     //
+    cudaMemcpy(resultarray, device_result, byte_count, cudaMemcpyDeviceToHost);
 
     // end timing after result has been copied back into host memory
     double endTime = CycleTimer::currentSeconds();
 
     cudaError_t errCode = cudaPeekAtLastError();
     if (errCode != cudaSuccess) {
-        fprintf(stderr, "WARNING: A CUDA error occured: code=%d, %s\n", errCode, cudaGetErrorString(errCode));
+        fprintf(stderr, "\nWARNING: A CUDA error occured: code=%d, %s\n", errCode,
+                cudaGetErrorString(errCode));
     }
 
     double overallDuration = endTime - startTime;
-    printf("Overall: %.3f ms\t\t[%.3f GB/s]\n", 1000.f * overallDuration, toBW(totalBytes, overallDuration));
+    printf("\nOverall: %.3f ms\t\t[%.3f GB/s]\n", 1000.f * overallDuration, toBW(totalBytes,
+                                                                                overallDuration));
 
     // TODO free memory buffers on the GPU
-
+    cudaFree(device_x);
+    cudaFree(device_y);
+    cudaFree(device_result);
 }
 
 void

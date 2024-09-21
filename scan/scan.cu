@@ -29,8 +29,35 @@ static inline int nextPow2(int n)
     return n;
 }
 
-void exclusive_scan(int* device_data, int length)
-{
+__global__ void exclusive_scan_iterative(int *data, int *end) {
+    int N = end - data;
+    // upsweep phase.
+    for (int twod = 1; twod < N; twod *= 2) {
+        int twod1 = twod * 2;
+
+        // TODO parallelize for-loop below
+        for(int i = 0; i < N; i += twod1) {
+            data[i + twod1 - 1] += data[i + twod - 1];
+        }
+    }
+    data[N - 1] = 0;
+
+    // downsweep phase.
+    for (int twod = N / 2; twod >= 1; twod /= 2) {
+        int twod1 = twod * 2;
+
+        // TODO parallelize for-loop below
+        for(int i = 0; i < N; i += twod1) {
+            int t = data[i + twod - 1];
+            data[i + twod - 1] = data[i + twod1 - 1];
+            // change twod1 below to twod to reverse prefix sum.
+            data[i + twod1 - 1] += t;
+        }
+    }
+}
+
+
+void exclusive_scan(int *device_data, int length) {
     /* TODO
      * Fill in this function with your exclusive scan implementation.
      * You are passed the locations of the data in device memory
@@ -43,15 +70,18 @@ void exclusive_scan(int* device_data, int length)
      * both the data array is sized to accommodate the next
      * power of 2 larger than the input.
      */
+    printf("start exclusive_scan");
+    exclusive_scan_iterative<<<1, 1>>>(device_data, device_data+length);
+    cudaDeviceSynchronize();
+    printf("end exclusive_scan");
 }
 
 /* This function is a wrapper around the code you will write - it copies the
  * input to the GPU and times the invocation of the exclusive_scan() function
  * above. You should not modify it.
  */
-double cudaScan(int* inarray, int* end, int* resultarray)
-{
-    int* device_data;
+double cudaScan(int *inarray, int *end, int *resultarray) {
+    int *device_data;
     // We round the array size up to a power of 2, but elements after
     // the end of the original input are left uninitialized and not checked
     // for correctness.

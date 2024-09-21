@@ -62,3 +62,4 @@ include_directories(${MY_SOURCE_DIR}/include)
 # Add executable for printpath
 # Update the path to printpath.c relative to MY_SOURCE_DIR
 add_executable(printpath ${MY_SOURCE_DIR}/printpath.c)
+#add_executable(ctest cuda_tests.cu)

@@ -22,6 +22,8 @@ saxpy_kernel(int N, float alpha, float* x, float* y, float* result) {
 void
 saxpyCuda(int N, float alpha, float* xarray, float* yarray, float* resultarray) {
 
+    printf("ENTERING saxpy/saxpy.cu MAIN");
+
     int totalBytes = sizeof(float) * 3 * N;
 
     // compute number of blocks and threads per block

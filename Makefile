@@ -17,6 +17,7 @@ all:
 	(cd saxpy ; make all)
 	(cd scan ; make all)
 	(cd render ; make all)
+	(cd tests ; make all)
 
 handin.tar: $(FILES)
 	tar cvf handin.tar $(FILES)
@@ -25,4 +26,5 @@ clean:
 	(cd saxpy ; make clean)
 	(cd scan ; make clean)
 	(cd render ; make clean)
+	(cd tests ; make clean)
 	rm -f *~ handin.tar

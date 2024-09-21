@@ -3,11 +3,11 @@
 //
 #include <stdio.h>
 
-#include <cuda.h>
-#include <cuda_runtime.h>
-#include <driver_functions.h>
+//#include <cuda.h>
+//#include <cuda_runtime.h>
+//#include <driver_functions.h>
+//#include "CycleTimer.h"
 
-#include "CycleTimer.h"
 
 __global__ void childKernel() {
     printf("Hello ");
@@ -22,17 +22,19 @@ __global__ void parentKernel() {
     childKernel<<<1,1>>>();
 
     if (cudaSuccess != cudaGetLastError()) {
-        return 1;
+        return;
     }
+
+    tailKernel<<<1,1>>>();
 
     // launch tail into cudaStreamTailLaunch stream
     // implicitly synchronizes: waits for child to complete
-    tailKernel<<<1,1,0,cudaStreamTailLaunch>>>();
+//    tailKernel<<<1,1,0,cudaStreamTailLaunch>>>(); # TODO make work
 }
 
 int main(int argc, char *argv[]) {
 
-        printf("ENTERING tests/cuda_tests.cu MAIN");
+        printf("ENTERING tests/cuda_tests.cu MAIN\n");
 
 
         // launch parent

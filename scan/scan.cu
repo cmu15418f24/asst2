@@ -72,7 +72,17 @@ static inline int nextPow2(int n)
 __global__ void first_loop(int *data, int N, int twod, int twod1, int numThreads) {
     int start = twod1 * (blockIdx.x * blockDim.x + threadIdx.x);
     for(int i = start; i + twod1 - 1 < N; i += twod1  * numThreads) {
-        data[i + twod1 - 1] += data[i + twod - 1];
+//        if ((i + twod1 - 1 < 0) || (i + twod1 - 1 >=N)) {
+//            printf("!!!!!!first loop trying to access %d\n", i + twod1 - 1);
+//        }
+//        if ((i + twod - 1 < 0) || (i + twod - 1 >=N)) {
+//            printf("!!!!!!first loop trying to access %d\n", i + twod - 1);
+//        }
+
+        if ((i + twod1 - 1 >= 0) && (i + twod1 - 1 < N) && (i + twod - 1 >= 0) && (i + twod - 1
+        <N)) {
+            data[i + twod1 - 1] += data[i + twod - 1];
+        }
     }
 }
 
@@ -80,10 +90,21 @@ __global__ void second_loop(int *data, int N, int twod, int twod1, int numThread
     int start = twod1 * (blockIdx.x * blockDim.x + threadIdx.x);
 
     for(int i = start; i < N; i += twod1 * numThreads) {
-        int t = data[i + twod - 1];
-        data[i + twod - 1] = data[i + twod1 - 1];
-        // change twod1 below to twod to reverse prefix sum.
-        data[i + twod1 - 1] += t;
+//        if ((i + twod1 - 1 < 0) || (i + twod1 - 1 >=N)) {
+//            printf("!!!!!!second loop trying to access %d\n", i + twod1 - 1);
+//        }
+//        if ((i + twod - 1 < 0) || (i + twod - 1 >=N)) {
+//            printf("!!!!!!second loop trying to access %d\n", i + twod - 1);
+//        }
+
+        if ((i + twod1 - 1 >= 0) && (i + twod1 - 1 < N) && (i + twod - 1 >= 0) && (i + twod - 1
+        < N)) {
+            int t = data[i + twod - 1];
+            data[i + twod - 1] = data[i + twod1 - 1];
+            // change twod1 below to twod to reverse prefix sum.
+            data[i + twod1 - 1] += t;
+        }
+
     }
 
 }
@@ -117,7 +138,7 @@ void exclusive_scan(int *device_data, int length) {
 
             // TODO understand how this call differers when threads are in 2D
             int threadsPerBlock = 32;
-            int blockCnt = 64; // TODO is this what we want?
+            int blockCnt = 32; // TODO is this what we want?
             int numThreads = threadsPerBlock * blockCnt; // TODO should this be automated?
             first_loop<<<blockCnt, threadsPerBlock>>>(device_data, N, twod, twod1, numThreads);
             cudaError_t err = cudaGetLastError();
@@ -130,6 +151,7 @@ void exclusive_scan(int *device_data, int length) {
 
         // data[N - 1] = 0;
         cudaMemcpy(device_data + (N-1), &zero, sizeof(int), cudaMemcpyHostToDevice);
+        printf("!! moving on to second loop (downsweep phase) !!!");
 
         // downsweep phase.
         for (int twod = N / 2; twod >= 1; twod /= 2) {

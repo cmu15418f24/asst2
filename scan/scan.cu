@@ -16,39 +16,8 @@ extern float toBW(int bytes, float sec);
 
 void printCudaInfo();
 
-/* Helper function to round up to a power of 2.
- */
-static inline int nextPow2(int n)
-{
-    n--;
-    n |= n >> 1;
-    n |= n >> 2;
-    n |= n >> 4;
-    n |= n >> 8;
-    n |= n >> 16;
-    n++;
-    return n;
-}
 
-__global__ void first_loop(int *data, int N, int twod, int twod1, int numThreads) {
-    int start = twod1 * (blockIdx.x * blockDim.x + threadIdx.x);
-    for(int i = start; i < N; i += twod1  * numThreads) {
-        data[i + twod1 - 1] += data[i + twod - 1];
-    }
-}
-
-__global__ void second_loop(int *data, int N, int twod, int twod1, int numThreads) {
-    int start = twod1 * (blockIdx.x * blockDim.x + threadIdx.x);
-
-    for(int i = start; i < N; i += twod1 * numThreads) {
-        int t = data[i + twod - 1];
-        data[i + twod - 1] = data[i + twod1 - 1];
-        // change twod1 below to twod to reverse prefix sum.
-        data[i + twod1 - 1] += t;
-    }
-
-}
-
+// TODO unused, delete
 __global__ void cuda_full_sequential(int *device_data, int length, int N) {
 
     printf("\nINSIDE CUDA KERNEL FULL SEQUENTIAL\n");
@@ -84,45 +53,44 @@ __global__ void cuda_full_sequential(int *device_data, int length, int N) {
     }
 }
 
-__global__ void cuda_sequential_first(int *device_data, int length, int N) {
 
-//    printf("\nINSIDE CUDA KERNEL FULL SEQUENTIAL\n");
 
-    // upsweep phase.
-    for (int twod = 1; twod < N; twod *= 2) {
-        int twod1 = twod * 2;
-
-        // TODO understand how this call differers when threads are in 2D
-//            first_loop<<<blockCnt, threadsPerBlock>>>(device_data, N, twod, twod1, numThreads);
-//            cudaDeviceSynchronize();
-        for(int i = 0; i < N; i += twod1) {
-            device_data[i + twod1 - 1] += device_data[i + twod - 1];
-        }
-    }
-
+/* Helper function to round up to a power of 2.
+ */
+static inline int nextPow2(int n)
+{
+    n--;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n++;
+    return n;
 }
 
-__global__ void cuda_sequential_second(int *device_data, int length, int N) {
-
-//    printf("\nINSIDE CUDA KERNEL FULL SEQUENTIAL\n");
-
-    // downsweep phase.
-    for (int twod = N / 2; twod >= 1; twod /= 2) {
-        int twod1 = twod * 2;
-
-        for(int i = 0; i < N; i += twod1) {
-            int t = device_data[i + twod - 1];
-            device_data[i + twod - 1] = device_data[i + twod1 - 1];
-            // change twod1 below to twod to reverse prefix sum.
-            device_data[i + twod1 - 1] += t;
-        }
+__global__ void first_loop(int *data, int N, int twod, int twod1, int numThreads) {
+    int start = twod1 * (blockIdx.x * blockDim.x + threadIdx.x);
+    for(int i = start; i + twod1 - 1 < N; i += twod1  * numThreads) {
+        data[i + twod1 - 1] += data[i + twod - 1];
     }
 }
 
+__global__ void second_loop(int *data, int N, int twod, int twod1, int numThreads) {
+    int start = twod1 * (blockIdx.x * blockDim.x + threadIdx.x);
+
+    for(int i = start; i < N; i += twod1 * numThreads) {
+        int t = data[i + twod - 1];
+        data[i + twod - 1] = data[i + twod1 - 1];
+        // change twod1 below to twod to reverse prefix sum.
+        data[i + twod1 - 1] += t;
+    }
+
+}
 
 void exclusive_scan(int *device_data, int length) {
 
-    printCudaInfo();
+//    printCudaInfo();
 
     /* TODO
      * Fill in this function with your exclusive scan implementation.
@@ -136,11 +104,7 @@ void exclusive_scan(int *device_data, int length) {
      * both the data array is sized to accommodate the next
      * power of 2 larger than the input.
      */
-    printf("\nstart exclusive_scan\n");
-    int threadsPerBlock = 32;
-    int blockCnt = (length + threadsPerBlock - 1) / threadsPerBlock; // TODO might not be necessary to round
-    blockCnt = 32; // TODO is this what we want?
-    int numThreads = threadsPerBlock * blockCnt; // TODO should this be automated?
+//    printf("\nstart exclusive_scan\n");
     int zero = 0;
 
     int N = nextPow2(length); // TODO round-up or something
@@ -152,11 +116,16 @@ void exclusive_scan(int *device_data, int length) {
             int twod1 = twod * 2;
 
             // TODO understand how this call differers when threads are in 2D
+            int threadsPerBlock = 32;
+            int blockCnt = 64; // TODO is this what we want?
+            int numThreads = threadsPerBlock * blockCnt; // TODO should this be automated?
             first_loop<<<blockCnt, threadsPerBlock>>>(device_data, N, twod, twod1, numThreads);
+            cudaError_t err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "CUDA ERROR IN FIRST LOOP: %s\n", cudaGetErrorString(err));
+                exit(err);
+            }
             cudaDeviceSynchronize();
-//        for(int i = 0; i < N; i += twod1) {
-//            data[i + twod1 - 1] += data[i + twod - 1];
-//        }
         }
 
         // data[N - 1] = 0;
@@ -166,31 +135,25 @@ void exclusive_scan(int *device_data, int length) {
         for (int twod = N / 2; twod >= 1; twod /= 2) {
             int twod1 = twod * 2;
 
+            int threadsPerBlock = 32;
+            int blockCnt = 32; // TODO is this what we want?
+            int numThreads = threadsPerBlock * blockCnt; // TODO should this be automated?
             second_loop<<<blockCnt, threadsPerBlock>>>(device_data, N, twod, twod1, numThreads);
+            cudaError_t err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                fprintf(stderr, "CUDA ERROR IN SECOND LOOP: %s\n", cudaGetErrorString(err));
+                exit(err);
+            }
             cudaDeviceSynchronize();
-//        for(int i = 0; i < N; i += twod1) {
-//            int t = device_data[i + twod - 1];
-//            device_data[i + twod - 1] = device_data[i + twod1 - 1];
-//            // change twod1 below to twod to reverse prefix sum.
-//            device_data[i + twod1 - 1] += t;
-//        }
         }
 
     } else if (decision == 1) {
-        printf("\nRUNNING Sequential Cuda\n");
-        cuda_sequential_first<<<1,1>>>(device_data, length, N);
-        cudaMemcpy(device_data + (N-1), &zero, sizeof(int), cudaMemcpyHostToDevice);
-        cuda_sequential_second<<<1,1>>>(device_data, length, N);
     } else if (decision == 2) {
-        printf("\nRUNNING Sequential Cuda\n");
-        cuda_sequential_first<<<1,1>>>(device_data, length, N);
-        cudaMemcpy(device_data + (N-1), &zero, sizeof(int), cudaMemcpyHostToDevice);
-        cuda_sequential_second<<<1,1>>>(device_data, length, N);
     }
 
 
 //    cudaDeviceSynchronize();
-    printf("end exclusive_scan\n");
+//    printf("end exclusive_scan\n");
 }
 
 /* This function is a wrapper around the code you will write - it copies the
@@ -225,11 +188,11 @@ double cudaScan(int *inarray, int *end, int *resultarray) {
                cudaMemcpyDeviceToHost);
 
     // TODO delete
-    printf("\n100 first Results:\n");
-    for (int i = 0; i < 100; i++) {
-        printf("%d ", resultarray[i]);
-    }
-    printf("\n");
+//    printf("\n100 first Results:\n");
+//    for (int i = 0; i < 100; i++) {
+//        printf("%d ", resultarray[i]);
+//    }
+//    printf("\n");
 
     return overallDuration;
 }

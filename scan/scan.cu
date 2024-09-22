@@ -16,45 +16,6 @@ extern float toBW(int bytes, float sec);
 
 void printCudaInfo();
 
-
-// TODO unused, delete
-__global__ void cuda_full_sequential(int *device_data, int length, int N) {
-
-    printf("\nINSIDE CUDA KERNEL FULL SEQUENTIAL\n");
-
-    // upsweep phase.
-    for (int twod = 1; twod < N; twod *= 2) {
-        int twod1 = twod * 2;
-
-        // TODO understand how this call differers when threads are in 2D
-//            first_loop<<<blockCnt, threadsPerBlock>>>(device_data, N, twod, twod1, numThreads);
-//            cudaDeviceSynchronize();
-        for(int i = 0; i < N; i += twod1) {
-            device_data[i + twod1 - 1] += device_data[i + twod - 1];
-        }
-    }
-
-    // data[N - 1] = 0;
-    int zero = 0;
-    device_data[N - 1] = 0;
-    device_data[length - 1] = 0;
-//    cudaMemcpy(device_data + (length-1), &zero, sizeof(int), cudaMemcpyHostToDevice);
-
-    // downsweep phase.
-    for (int twod = N / 2; twod >= 1; twod /= 2) {
-        int twod1 = twod * 2;
-
-        for(int i = 0; i < N; i += twod1) {
-            int t = device_data[i + twod - 1];
-            device_data[i + twod - 1] = device_data[i + twod1 - 1];
-            // change twod1 below to twod to reverse prefix sum.
-            device_data[i + twod1 - 1] += t;
-        }
-    }
-}
-
-
-
 /* Helper function to round up to a power of 2.
  */
 static inline int nextPow2(int n)
@@ -74,17 +35,7 @@ static inline int nextPow2(int n)
 __global__ void first_loop(int *data, int N, index_type twod, index_type twod1, int numThreads) {
     index_type start = twod1 * (blockIdx.x * blockDim.x + threadIdx.x);
     for(index_type i = start; i + twod1 - 1 < N; i += twod1  * numThreads) {
-//        if ((i + twod1 - 1 < 0) || (i + twod1 - 1 >=N)) {
-//            printf("!!!!!!first loop trying to access %d\n", i + twod1 - 1);
-//        }
-//        if ((i + twod - 1 < 0) || (i + twod - 1 >=N)) {
-//            printf("!!!!!!first loop trying to access %d\n", i + twod - 1);
-//        }
-
-//        if ((i + twod1 - 1 >= 0) && (i + twod1 - 1 < N) && (i + twod - 1 >= 0) && (i + twod - 1
-//        <N)) {
             data[i + twod1 - 1] += data[i + twod - 1];
-//        }
     }
 }
 
@@ -92,92 +43,35 @@ __global__ void second_loop(int *data, int N, index_type twod, index_type twod1,
     index_type start = twod1 * (blockIdx.x * blockDim.x + threadIdx.x);
 
     for(index_type i = start; i < N; i += twod1 * numThreads) {
-//        if ((i + twod1 - 1 < 0) || (i + twod1 - 1 >=N)) {
-//            printf("!!!!!!second loop trying to access %d\n", i + twod1 - 1);
-//        }
-//        if ((i + twod - 1 < 0) || (i + twod - 1 >=N)) {
-//            printf("!!!!!!second loop trying to access %d\n", i + twod - 1);
-//        }
-
-//        if ((i + twod1 - 1 >= 0) && (i + twod1 - 1 < N) && (i + twod - 1 >= 0) && (i + twod - 1
-//        < N)) {
             int t = data[i + twod - 1];
             data[i + twod - 1] = data[i + twod1 - 1];
-            // change twod1 below to twod to reverse prefix sum.
             data[i + twod1 - 1] += t;
-//        }
-
     }
 
 }
 
 void exclusive_scan(int *device_data, int length) {
-
-//    printCudaInfo();
-
-    /* TODO
-     * Fill in this function with your exclusive scan implementation.
-     * You are passed the locations of the data in device memory
-     * The data are initialized to the inputs.  Your code should
-     * do an in-place scan, generating the results in the same array.
-     * This is host code -- you will need to declare one or more CUDA
-     * kernels (with the __global__ decorator) in order to actually run code
-     * in parallel on the GPU.
-     * Note you are given the real length of the array, but may assume that
-     * both the data array is sized to accommodate the next
-     * power of 2 larger than the input.
-     */
-//    printf("\nstart exclusive_scan\n");
-    int zero = 0;
+    int threadsPerBlock = 32;
+    int blockCnt = 256;
+    int numThreads = threadsPerBlock * blockCnt;
 
     int N = nextPow2(length); // TODO round-up or something
 
-    int decision = 0; // 0 for main parallel, 1 for sequential, 2 for threadstest
-    if (decision == 0) {
-        // upsweep phase.
-        for (index_type twod = 1; twod < N; twod *= 2) {
-            index_type twod1 = twod * 2;
-
-            // TODO understand how this call differers when threads are in 2D
-            int threadsPerBlock = 32;
-            int blockCnt = 256; // TODO is this what we want?
-            int numThreads = threadsPerBlock * blockCnt; // TODO should this be automated?
-            first_loop<<<blockCnt, threadsPerBlock>>>(device_data, N, twod, twod1, numThreads);
-//            cudaError_t err = cudaGetLastError();
-//            if (err != cudaSuccess) {
-//                fprintf(stderr, "CUDA ERROR IN FIRST LOOP: %s\n", cudaGetErrorString(err));
-//                exit(err);
-//            }
-//            cudaDeviceSynchronize();
-        }
-
-        // data[N - 1] = 0;
-        cudaMemcpy(device_data + (N-1), &zero, sizeof(int), cudaMemcpyHostToDevice);
-//        printf("!! moving on to second loop (downsweep phase) !!!");
-
-        // downsweep phase.
-        for (index_type twod = N / 2; twod >= 1; twod /= 2) {
-            index_type twod1 = twod * 2;
-
-            int threadsPerBlock = 32;
-            int blockCnt = 256; // TODO is this what we want?
-            int numThreads = threadsPerBlock * blockCnt; // TODO should this be automated?
-            second_loop<<<blockCnt, threadsPerBlock>>>(device_data, N, twod, twod1, numThreads);
-//            cudaError_t err = cudaGetLastError();
-//            if (err != cudaSuccess) {
-//                fprintf(stderr, "CUDA ERROR IN SECOND LOOP: %s\n", cudaGetErrorString(err));
-//                exit(err);
-//            }
-//            cudaDeviceSynchronize();
-        }
-
-    } else if (decision == 1) {
-    } else if (decision == 2) {
+    // upsweep phase.
+    for (index_type twod = 1; twod < N; twod *= 2) {
+        index_type twod1 = twod * 2;
+        // TODO understand how this call differs when threads are in 2D or 3D
+        first_loop<<<blockCnt, threadsPerBlock>>>(device_data, N, twod, twod1, numThreads);
     }
 
+    int zero = 0;
+    cudaMemcpy(device_data + (N-1), &zero, sizeof(int), cudaMemcpyHostToDevice);
 
-//    cudaDeviceSynchronize();
-//    printf("end exclusive_scan\n");
+    // downsweep phase.
+    for (index_type twod = N / 2; twod >= 1; twod /= 2) {
+        index_type twod1 = twod * 2;
+        second_loop<<<blockCnt, threadsPerBlock>>>(device_data, N, twod, twod1, numThreads);
+    }
 }
 
 /* This function is a wrapper around the code you will write - it copies the
